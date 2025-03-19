@@ -14,6 +14,7 @@ const Globe = ({ className = "" }: GlobeProps) => {
   const earthRef = useRef<THREE.Mesh | null>(null);
   const pointRef = useRef<THREE.Mesh | null>(null);
   const frameIdRef = useRef<number | null>(null);
+  const highlightGroupRef = useRef<THREE.Group | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -133,6 +134,11 @@ const Globe = ({ className = "" }: GlobeProps) => {
     const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
     scene.add(atmosphere);
 
+    // Create a group for the highlight elements
+    const highlightGroup = new THREE.Group();
+    scene.add(highlightGroup);
+    highlightGroupRef.current = highlightGroup;
+
     // Assam location marker (approximate coordinates)
     // Assam is at roughly 26.2006° N, 92.9376° E
     const latLongToVector3 = (lat: number, long: number, radius: number) => {
@@ -148,7 +154,9 @@ const Globe = ({ className = "" }: GlobeProps) => {
 
     // Create Assam marker
     const assamPosition = latLongToVector3(26.2006, 92.9376, 1.02);
-    const pointGeometry = new THREE.SphereGeometry(0.02, 16, 16);
+    
+    // Enhanced location marker - glowing sphere
+    const pointGeometry = new THREE.SphereGeometry(0.03, 16, 16);
     const pointMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
@@ -178,11 +186,11 @@ const Globe = ({ className = "" }: GlobeProps) => {
 
     const point = new THREE.Mesh(pointGeometry, pointMaterial);
     point.position.copy(assamPosition);
-    scene.add(point);
+    highlightGroup.add(point);
     pointRef.current = point;
 
-    // Add a glowing ring around the point
-    const ringGeometry = new THREE.RingGeometry(0.03, 0.05, 32);
+    // Add an animated ring around the point
+    const ringGeometry = new THREE.RingGeometry(0.05, 0.08, 32);
     const ringMaterial = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
@@ -214,10 +222,86 @@ const Globe = ({ className = "" }: GlobeProps) => {
 
     const ring = new THREE.Mesh(ringGeometry, ringMaterial);
     ring.position.copy(assamPosition);
-    // Orient the ring to face outward from the globe center
     ring.lookAt(0, 0, 0);
     ring.rotateX(Math.PI / 2);
-    scene.add(ring);
+    highlightGroup.add(ring);
+
+    // Add a second larger pulsing ring
+    const outerRingGeometry = new THREE.RingGeometry(0.1, 0.12, 32);
+    const outerRingMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        time: { value: 0 },
+        color: { value: new THREE.Color(0xff3366) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float time;
+        uniform vec3 color;
+        
+        varying vec2 vUv;
+        
+        void main() {
+          float pulse = sin(time * 1.5 + 1.0) * 0.5 + 0.5;
+          float alpha = pulse * 0.7;
+          gl_FragColor = vec4(color, alpha);
+        }
+      `,
+      transparent: true,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending
+    });
+
+    const outerRing = new THREE.Mesh(outerRingGeometry, outerRingMaterial);
+    outerRing.position.copy(assamPosition);
+    outerRing.lookAt(0, 0, 0);
+    outerRing.rotateX(Math.PI / 2);
+    highlightGroup.add(outerRing);
+
+    // Add location info label
+    const createLocationLabel = () => {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) return null;
+      
+      canvas.width = 256;
+      canvas.height = 128;
+      
+      context.fillStyle = 'rgba(0, 0, 0, 0)';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      
+      context.font = 'bold 24px Arial';
+      context.fillStyle = '#ffffff';
+      context.textAlign = 'center';
+      context.fillText('Assam, India', canvas.width / 2, 30);
+      
+      context.font = '18px Arial';
+      context.fillStyle = '#f0f0f0';
+      context.fillText('Home', canvas.width / 2, 60);
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      const material = new THREE.SpriteMaterial({ 
+        map: texture,
+        transparent: true,
+        depthTest: false
+      });
+      
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(0.5, 0.25, 1);
+      sprite.position.copy(assamPosition.clone().multiplyScalar(1.3));
+      
+      return sprite;
+    };
+    
+    const locationLabel = createLocationLabel();
+    if (locationLabel) {
+      highlightGroup.add(locationLabel);
+    }
 
     // Mouse rotation
     let mouseX = 0;
@@ -286,9 +370,12 @@ const Globe = ({ className = "" }: GlobeProps) => {
         (pointRef.current.material as THREE.ShaderMaterial).uniforms.time.value = elapsedTime;
       }
       
-      if (ringMaterial) {
-        ringMaterial.uniforms.time.value = elapsedTime;
-      }
+      // Update ring materials
+      highlightGroup.children.forEach(child => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.ShaderMaterial) {
+          child.material.uniforms.time.value = elapsedTime;
+        }
+      });
       
       // Globe rotation logic
       if (autoRotate) {
@@ -307,12 +394,9 @@ const Globe = ({ className = "" }: GlobeProps) => {
         atmosphere.rotation.x = earth.rotation.x;
       }
       
-      // Update point and ring position to stay in the correct place on the globe
-      if (point && ring) {
-        point.position.copy(assamPosition.clone().applyEuler(earth.rotation));
-        ring.position.copy(point.position);
-        ring.lookAt(0, 0, 0);
-        ring.rotateX(Math.PI / 2);
+      // Update highlight group rotation to match earth
+      if (highlightGroupRef.current) {
+        highlightGroupRef.current.rotation.copy(earth.rotation);
       }
       
       // Render scene
