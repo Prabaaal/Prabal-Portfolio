@@ -118,7 +118,10 @@ const Home = () => {
           />
           <div className="glass-card p-8 rounded-2xl relative overflow-hidden">
             <h2 className="text-xl md:text-2xl font-bold mb-4 text-center">I'm located in Assam, India</h2>
-            <Globe className="h-72 md:h-96" />
+            {/* Explicitly set height and width for the Globe component */}
+            <div style={{ height: "350px", width: "100%" }}>
+              <Globe className="w-full h-full" />
+            </div>
             <Link to="/about" className="absolute bottom-4 right-4 text-primary flex items-center text-sm hover:underline">
               More about me <ChevronRight className="h-4 w-4" />
             </Link>
