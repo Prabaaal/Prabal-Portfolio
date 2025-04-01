@@ -99,7 +99,7 @@ const Home = () => {
           duration: 1
         }} />
           <div className="glass-card p-8 rounded-2xl relative overflow-hidden">
-            <h2 className="text-xl md:text-2xl font-bold mb-4 text-center">I'm located in Phagwara, India</h2>
+            <h2 className="text-xl md:text-2xl font-bold mb-4 text-center">I'm located in Assam, India</h2>
             {/* Explicitly set height and width for the Globe component */}
             <div style={{
             height: "350px",
